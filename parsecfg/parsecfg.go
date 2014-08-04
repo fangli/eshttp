@@ -24,7 +24,9 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"io/ioutil"
 	"log"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
@@ -123,7 +125,7 @@ func showVersion() {
 }
 
 func getConfigPath() string {
-	configPath := flag.String("c", "/etc/eshttp.conf", "Path of config file")
+	configPath := flag.String("c", "/etc/eshttp.conf", "Path of config file or URI")
 	version := flag.Bool("version", false, "Show version information")
 	v := flag.Bool("v", false, "Show version information")
 	flag.Parse()
@@ -167,16 +169,20 @@ func initialDefault() *Config {
 	return config
 }
 
-func Parse() *Config {
-
-	configPath := getConfigPath()
-
-	config := initialDefault()
-	err := gcfg.ReadFileInto(config, configPath)
+func getURIConfig(uri string) (string, error) {
+	resp, err := http.Get(uri)
 	if err != nil {
-		log.Fatalf("Failed to read config from %s, Reason: %s", configPath, err)
+		return "", errors.New("Failed to load config from " + uri + ": " + err.Error())
 	}
+	if resp.StatusCode != 200 {
+		return "", errors.New("Failed to load config from " + uri + ": Not HTTP 200")
+	}
+	defer resp.Body.Close()
+	body, err := ioutil.ReadAll(resp.Body)
+	return string(body), nil
+}
 
+func ConfigFormat(config *Config) {
 	// Read timeout parse
 	_readTimeout, err := time.ParseDuration(config.Http.Raw_ReadTimeout)
 	if err != nil {
@@ -262,5 +268,69 @@ func Parse() *Config {
 		FileName: config.Main.LogFile,
 	}
 
-	return config
+	return
+}
+
+type ConfigManager struct {
+	Source    string
+	ReloadChn chan *Config
+}
+
+func (c *ConfigManager) runCheckBg() {
+	var err error
+	var currentRaw = "EMPTY_CONFIG"
+	var newConfigStr string
+	for {
+		newConfigStr, err = getURIConfig(c.Source)
+		if err != nil {
+			time.Sleep(time.Second)
+			continue
+		}
+		if newConfigStr != currentRaw {
+
+			config := initialDefault()
+			err = gcfg.ReadStringInto(config, newConfigStr)
+			if err != nil {
+				time.Sleep(time.Second)
+				continue
+			}
+			currentRaw = newConfigStr
+			ConfigFormat(config)
+			c.ReloadChn <- config
+		}
+		time.Sleep(time.Second)
+	}
+}
+
+func (c *ConfigManager) runCheckLocal() {
+	var err error
+	config := initialDefault()
+	err = gcfg.ReadFileInto(config, c.Source)
+	if err != nil {
+		log.Fatalf("Failed to read config from %s, Reason: %s", c.Source, err)
+	}
+	ConfigFormat(config)
+	c.ReloadChn <- config
+}
+
+func (c *ConfigManager) SendReload() error {
+	if strings.HasPrefix(c.Source, "http") {
+		return errors.New("You can't reload a dynamic config manually!")
+	} else {
+		go c.runCheckLocal()
+		return nil
+	}
+}
+
+func (c *ConfigManager) Initial() {
+
+	c.ReloadChn = make(chan *Config)
+	c.Source = getConfigPath()
+
+	if strings.HasPrefix(c.Source, "http") {
+		go c.runCheckBg()
+	} else {
+		go c.runCheckLocal()
+	}
+
 }

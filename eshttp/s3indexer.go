@@ -80,6 +80,7 @@ func (s *S3ChunkManager) WriteChunk(chunk EsMsg) {
 		s.chunks[idx] = s.NewS3Chunk(chunk.Index, chunk.Type)
 	} else {
 		if time.Now().UTC().After(s.chunks[idx].expires) {
+			s.Config.AppLog.Debug("Rotate old chunk and create a new one for " + idx)
 			s.chunks[idx].Close()
 			delete(s.chunks, idx)
 			s.chunks[idx] = s.NewS3Chunk(chunk.Index, chunk.Type)
@@ -93,6 +94,7 @@ func (s *S3ChunkManager) Shutdown() {
 		s3chunk.Close()
 		delete(s.chunks, idx)
 	}
+	s.Config.AppLog.Info("S3 Indexer stopped")
 }
 
 func (s *S3ChunkManager) Initial() {
@@ -112,9 +114,12 @@ func (s *S3Indexer) WriteS3Cache() {
 	}
 	chunkManager.Initial()
 
+	s.Config.AppLog.Info("S3 chunk manager is ready for archiving logs...")
+
 	for chunk := range s.S3Input {
 		chunkManager.WriteChunk(chunk)
 	}
+	s.Config.AppLog.Info("Stopping S3 chunk manager...")
 	chunkManager.Shutdown()
 	s.shutdownChn <- true
 }

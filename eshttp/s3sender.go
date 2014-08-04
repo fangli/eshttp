@@ -25,6 +25,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"time"
 
 	"github.com/crowdmob/goamz/s3"
@@ -48,6 +49,7 @@ func (s *S3Sender) bufferScanner() {
 				time.Sleep(time.Millisecond * 200)
 			} else {
 				sort.Strings(tempFiles)
+				s.Config.AppLog.Debug("Found S3 buffered chunk for sending: " + tempFiles[0])
 				s.inputChunkFile <- MakeSendReady(tempFiles[0])
 			}
 		case <-s.doneScannerChan:
@@ -77,10 +79,11 @@ func (s *S3Sender) sender() {
 		case chunk := <-s.inputChunkFile:
 			err := s.send(chunk)
 			if err != nil {
-				s.Config.AppLog.Error(err.Error())
+				s.Config.AppLog.Warning("Error uploading S3 files: " + err.Error() + ", rollback transaction.")
 				RollbackChunk(chunk)
 			} else {
 				FinishChunk(chunk)
+				s.Config.AppLog.Debug("S3 chunk uploaded successfully: " + chunk)
 			}
 		case <-s.doneSenderChan:
 			return
@@ -89,10 +92,13 @@ func (s *S3Sender) sender() {
 }
 
 func (s *S3Sender) Shutdown() {
+	s.Config.AppLog.Info("Shutting-down S3 chunk scanner...")
 	s.doneScannerChan <- true
+	s.Config.AppLog.Info("Shutting-down S3 chunk sender...")
 	for i := 0; i < s.Config.S3.MaxConcurrent; i++ {
 		s.doneSenderChan <- true
 	}
+	s.Config.AppLog.Info("S3 sender stopped")
 }
 
 func (s *S3Sender) initialBucket(bucket *s3.Bucket) {
@@ -101,6 +107,11 @@ func (s *S3Sender) initialBucket(bucket *s3.Bucket) {
 
 func (s *S3Sender) Run() {
 
+	s.Config.AppLog.Info(
+		"Starting S3 Sender with" +
+			" accesskey=" + s.Config.S3.Raw_AccessKey +
+			" region=" + s.Config.S3.Raw_Region +
+			" bucket=" + s.Config.S3.Bucket)
 	s3Conn := s3.New(*s.Config.S3.Auth, *s.Config.S3.Region)
 	s.bucket = s3Conn.Bucket(s.Config.S3.Bucket)
 	s.initialBucket(s.bucket)
@@ -109,6 +120,7 @@ func (s *S3Sender) Run() {
 	s.doneScannerChan = make(chan bool)
 	s.inputChunkFile = make(chan string)
 
+	s.Config.AppLog.Info("Spawning " + strconv.Itoa(s.Config.S3.MaxConcurrent) + " threads for S3 uploading")
 	for i := 0; i < s.Config.S3.MaxConcurrent; i++ {
 		go s.sender()
 	}
@@ -116,6 +128,7 @@ func (s *S3Sender) Run() {
 	// inputChunkFile is a chan that contains the filename of ready-to-send
 	// S3 chunk file, and EsBufferScanner() will scan those files and
 	// make them ready to post, then push the oldest one to chan.
+	s.Config.AppLog.Info("Starting S3 chunk scanner...")
 	go s.bufferScanner()
 
 }

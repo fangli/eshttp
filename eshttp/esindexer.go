@@ -22,6 +22,7 @@ package eshttp
 
 import (
 	"bytes"
+	"strconv"
 	"sync"
 	"time"
 
@@ -38,6 +39,7 @@ type EsIndexer struct {
 }
 
 func (e *EsIndexer) Shutdown() {
+	e.Config.AppLog.Info("Waiting for ES input buffer empty...")
 	for {
 		if len(e.EsInput) == 0 {
 			close(e.EsInput)
@@ -45,12 +47,16 @@ func (e *EsIndexer) Shutdown() {
 		}
 		time.Sleep(time.Millisecond * 10)
 	}
+	e.Config.AppLog.Info("ES input buffer closed...")
+	e.Config.AppLog.Info("Stopping and flush ES buffer to local FS...")
 	e.indexer.Stop()
+	e.Config.AppLog.Info("ES buffer flushed and closed")
 
 }
 
 func (e *EsIndexer) runIndexer() {
 	e.indexer.Start()
+	e.Config.AppLog.Info("ES indexer started")
 	for esMsg := range e.EsInput {
 		e.indexer.Index(indexParser(esMsg.Index), esMsg.Type, "", "", nil, esMsg.Doc, false)
 	}
@@ -58,6 +64,11 @@ func (e *EsIndexer) runIndexer() {
 
 func (e *EsIndexer) Run() {
 
+	e.Config.AppLog.Info(
+		"Starting ES local indexer with" +
+			" max-bulk-size=" + strconv.Itoa(e.Config.Elasticsearch.MaxBulkSize) +
+			" max-bulk-docs=" + strconv.Itoa(e.Config.Elasticsearch.MaxBulkDocs) +
+			" max-bulk-delay=" + e.Config.Elasticsearch.MaxBulkDelay.String())
 	elastConn := elastigo.NewConn()
 	e.indexer = elastConn.NewBulkIndexer(10)
 	e.indexer.BulkMaxBuffer = e.Config.Elasticsearch.MaxBulkSize

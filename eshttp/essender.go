@@ -24,6 +24,7 @@ import (
 	"io/ioutil"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"time"
 
 	"github.com/fangli/eshttp/parsecfg"
@@ -47,6 +48,7 @@ func (e *EsSender) bufferScanner() {
 				time.Sleep(time.Millisecond * 200)
 			} else {
 				sort.Strings(tempFiles)
+				e.Config.AppLog.Debug("ES buffer scanner found chunk " + tempFiles[0] + ", make it ready for sending.")
 				e.inputChunkFile <- MakeSendReady(tempFiles[0])
 			}
 		case <-e.doneScannerChan:
@@ -71,8 +73,11 @@ func (e *EsSender) sender() {
 		case chunk := <-e.inputChunkFile:
 			err := e.send(chunk)
 			if err != nil {
+				e.Config.AppLog.Warning("ES Sender err: " + err.Error())
+				e.Config.AppLog.Warning("Rollback transaction for chunk cache " + chunk)
 				RollbackChunk(chunk)
 			} else {
+				e.Config.AppLog.Debug("ES chunk file sent successfully: " + chunk)
 				FinishChunk(chunk)
 			}
 		case <-e.doneSenderChan:
@@ -82,14 +87,22 @@ func (e *EsSender) sender() {
 }
 
 func (e *EsSender) Shutdown() {
+	e.Config.AppLog.Info("Shutting-down ES scanner channel...")
 	e.doneScannerChan <- true
+	e.Config.AppLog.Info("Shutting-down all ES sender threads...")
 	for i := 0; i < e.Config.Elasticsearch.MaxConcurrent; i++ {
 		e.doneSenderChan <- true
 	}
+	e.Config.AppLog.Info("ES Sender stopped")
 }
 
 func (e *EsSender) Run() {
 
+	e.Config.AppLog.Info(
+		"Starting ES Sender with" +
+			" hosts=" + e.Config.Elasticsearch.Raw_Seed_Nodes +
+			" username=" + e.Config.Elasticsearch.BasicUser +
+			" password=" + e.Config.Elasticsearch.BasicPasswd)
 	e.esConn = elastigo.NewConn()
 	e.esConn.Hosts = e.Config.Elasticsearch.SeedNodes
 	e.esConn.Username = e.Config.Elasticsearch.BasicUser
@@ -99,6 +112,7 @@ func (e *EsSender) Run() {
 	e.doneScannerChan = make(chan bool)
 	e.inputChunkFile = make(chan string)
 
+	e.Config.AppLog.Info("Spawning " + strconv.Itoa(e.Config.Elasticsearch.MaxConcurrent) + " ES sender threads")
 	for i := 0; i < e.Config.Elasticsearch.MaxConcurrent; i++ {
 		go e.sender()
 	}

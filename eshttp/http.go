@@ -63,19 +63,25 @@ func (h *HttpServer) SetStopStatus() {
 	h.isRunning = false
 	h.isRunningMutex.Unlock()
 	h.serve.SetKeepAlivesEnabled(false)
+	h.Config.AppLog.Info("HTTP server comes into shutting-down status, wait for up to " + h.Config.Http.ShutdownWait.String())
+	h.Config.AppLog.Info("Waiting for Load balancer removing self from cluster...")
 	time.Sleep(h.Config.Http.ShutdownWait)
 }
 
 func (h *HttpServer) CloseSocket() {
 	ln := *h.ln
 	ln.Close()
+	h.Config.AppLog.Info("TCP socket closed, all further requests will be rejected")
 	h.denyRequestChn <- true
+	h.Config.AppLog.Info("Wait until all in flight request finished")
 	h.requestWg.Wait()
 }
 
 func (h *HttpServer) Shutdown() {
+	h.Config.AppLog.Info("Set /status to 503(shutting-down) and keep alives to disabled")
 	h.SetStopStatus()
 	h.CloseSocket()
+	h.Config.AppLog.Info("HTTP server stopped")
 }
 
 func (h *HttpServer) parseJson(rawJson []byte) ([]byte, error) {
@@ -192,6 +198,7 @@ func (h *HttpServer) createServer(mux *http.ServeMux, port string) {
 }
 
 func (h *HttpServer) runServer() {
+	h.Config.AppLog.Info("HTTP server started")
 	err := h.serve.Serve(*h.ln)
 	if !strings.Contains(err.Error(), "accept") {
 		h.Config.AppLog.Fatal(err.Error())
@@ -208,6 +215,8 @@ func (h *HttpServer) Run() {
 	mux.HandleFunc("/log", h.logHandler)
 	mux.HandleFunc("/crossdomain.xml", h.corsHandler)
 	mux.HandleFunc("/status", h.statusHandler)
+
+	h.Config.AppLog.Info("Binding TCP socket " + h.Config.Http.Listen + ":" + h.Config.Http.Port + " for HTTP service")
 	h.createServer(mux, h.Config.Http.Port)
 	go h.runServer()
 }
