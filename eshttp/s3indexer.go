@@ -24,6 +24,7 @@ import (
 	"compress/gzip"
 	"os"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/fangli/eshttp/parsecfg"
@@ -49,9 +50,13 @@ func (s *S3Chunk) Close() {
 }
 
 type S3ChunkManager struct {
-	Config     *parsecfg.Config
-	chunks     map[string]*S3Chunk
-	shutdownWg sync.WaitGroup
+	Config         *parsecfg.Config
+	StatusOutput   chan StatusInfo
+	chunks         map[string]*S3Chunk
+	chunkCurrent   int64
+	chunkStatsChn  chan int64
+	shutdownWg     sync.WaitGroup
+	shutdownStatus chan bool
 }
 
 func (s *S3ChunkManager) NewS3Chunk(project string, group string) *S3Chunk {
@@ -86,7 +91,31 @@ func (s *S3ChunkManager) WriteChunk(chunk EsMsg) {
 			s.chunks[idx] = s.NewS3Chunk(chunk.Index, chunk.Type)
 		}
 	}
+	s.chunkStatsChn <- int64(len(chunk.Doc))
 	s.chunks[idx].gzipWriter.Write(append(chunk.Doc, '\n'))
+}
+
+func (s *S3ChunkManager) rotateStatus() {
+	for sz := range s.chunkStatsChn {
+		atomic.AddInt64(&s.chunkCurrent, sz)
+	}
+	s.Config.AppLog.Info("Status reporter of S3 Indexer stopped")
+}
+
+func (s *S3ChunkManager) SendRatios() {
+	var lastByte int64 = 0
+	var total int64 = 0
+	for {
+		select {
+		case <-time.After(time.Second * 10):
+			total = atomic.LoadInt64(&s.chunkCurrent)
+			SendStatus(s.StatusOutput, "s3_indexer", "bytes_per_second", (total-lastByte)/10)
+			lastByte = total
+		case <-s.shutdownStatus:
+			close(s.chunkStatsChn)
+			return
+		}
+	}
 }
 
 func (s *S3ChunkManager) Shutdown() {
@@ -94,23 +123,32 @@ func (s *S3ChunkManager) Shutdown() {
 		s3chunk.Close()
 		delete(s.chunks, idx)
 	}
+	s.shutdownStatus <- true
 	s.Config.AppLog.Info("S3 Indexer stopped")
 }
 
 func (s *S3ChunkManager) Initial() {
 	s.chunks = make(map[string]*S3Chunk)
+	s.chunkStatsChn = make(chan int64, 100000)
+	s.shutdownStatus = make(chan bool)
+
+	go s.rotateStatus()
+	go s.SendRatios()
+
 }
 
 type S3Indexer struct {
-	Config      *parsecfg.Config
-	S3Input     chan EsMsg
-	shutdownChn chan bool
+	Config       *parsecfg.Config
+	S3Input      chan EsMsg
+	shutdownChn  chan bool
+	StatusOutput chan StatusInfo
 }
 
 func (s *S3Indexer) WriteS3Cache() {
 
 	chunkManager := &S3ChunkManager{
-		Config: s.Config,
+		Config:       s.Config,
+		StatusOutput: s.StatusOutput,
 	}
 	chunkManager.Initial()
 

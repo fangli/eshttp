@@ -41,6 +41,28 @@ var (
 	_datetimeReplacer = strings.NewReplacer(_datetimeLayout...)
 )
 
+func fileSize(file string) (int64, error) {
+	f, e := os.Stat(file)
+	if e != nil {
+		return 0, e
+	}
+	return f.Size(), nil
+}
+
+func GlobSize(files []string) int64 {
+	var tmpSize, ret int64
+	var err error
+
+	for _, f := range files {
+		tmpSize, err = fileSize(f)
+		if err != nil {
+			return -1
+		}
+		ret += tmpSize
+	}
+	return ret
+}
+
 func randString(n int) string {
 	const rainbow = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"
 	var bytes = make([]byte, n)
@@ -49,6 +71,14 @@ func randString(n int) string {
 		bytes[i] = rainbow[b%byte(len(rainbow))]
 	}
 	return string(bytes)
+}
+
+func SendStatus(statusChn chan StatusInfo, moduleName string, statusName string, value interface{}) {
+	statusChn <- StatusInfo{
+		ModuleName: moduleName,
+		StatusName: statusName,
+		Value:      value,
+	}
 }
 
 func MakeDirs(path string) {

@@ -21,22 +21,38 @@
 package eshttp
 
 import (
+	"bytes"
+	"encoding/json"
+	"io/ioutil"
+	"net/http"
 	"runtime"
 	"strconv"
 	"sync"
+	"time"
 
 	"github.com/fangli/eshttp/parsecfg"
 )
 
+type StatusInfo struct {
+	ModuleName string
+	StatusName string
+	Value      interface{}
+}
+
 type InstanceManager struct {
-	Config     *parsecfg.Config
-	esChn      chan EsMsg
-	s3Chn      chan EsMsg
-	esIndexer  *EsIndexer
-	esSender   *EsSender
-	s3Indexer  *S3Indexer
-	s3Sender   *S3Sender
-	httpServer *HttpServer
+	Config         *parsecfg.Config
+	StartUnixTime  int64
+	esChn          chan EsMsg
+	s3Chn          chan EsMsg
+	esIndexer      *EsIndexer
+	esSender       *EsSender
+	s3Indexer      *S3Indexer
+	s3Sender       *S3Sender
+	httpServer     *HttpServer
+	statusChn      chan StatusInfo
+	status         map[string]map[string]interface{}
+	statusLock     sync.Mutex
+	shutdownUpdate chan bool
 }
 
 func (i *InstanceManager) Shutdown() {
@@ -72,6 +88,67 @@ func (i *InstanceManager) Shutdown() {
 		wg2.Done()
 	}()
 	wg2.Wait()
+
+	i.ShutdownStatusLogger()
+}
+
+func (i *InstanceManager) postUrl(url string, b []byte) {
+	r := bytes.NewReader(b)
+	res, err := http.Post(url, "application/json", r)
+	if err != nil {
+		return
+	}
+	_, _ = ioutil.ReadAll(res.Body)
+	res.Body.Close()
+}
+
+func (i *InstanceManager) postFile(b []byte) {
+	err := ioutil.WriteFile(i.Config.Main.StatusFile, b, 0644)
+	if err != nil {
+		i.Config.AppLog.Error("Err writing status file: " + err.Error())
+	}
+}
+
+func (i *InstanceManager) UpdateStatus() {
+	reloadTime := time.Now().Unix()
+	for {
+		select {
+		case <-time.After(time.Second):
+			i.statusLock.Lock()
+			i.status["system"] = make(map[string]interface{})
+			i.status["system"]["uptime"] = time.Now().Unix() - i.StartUnixTime
+			i.status["system"]["last_reload_at"] = reloadTime
+			i.status["system"]["seconds_since_reload"] = time.Now().Unix() - reloadTime
+			b, _ := json.Marshal(i.status)
+			i.statusLock.Unlock()
+
+			if i.Config.Main.StatusFile != "" {
+				i.postFile(b)
+			}
+			if i.Config.Main.StatusUploadUrl != "" {
+				i.postUrl(i.Config.Main.StatusUploadUrl, b)
+			}
+
+		case <-i.shutdownUpdate:
+			return
+		}
+	}
+}
+
+func (i *InstanceManager) StatusLogger() {
+	for stat := range i.statusChn {
+		i.statusLock.Lock()
+		if _, ok := i.status[stat.ModuleName]; !ok {
+			i.status[stat.ModuleName] = make(map[string]interface{})
+		}
+		i.status[stat.ModuleName][stat.StatusName] = stat.Value
+		i.statusLock.Unlock()
+	}
+	i.shutdownUpdate <- true
+}
+
+func (i *InstanceManager) ShutdownStatusLogger() {
+	close(i.statusChn)
 }
 
 func (i *InstanceManager) Run() {
@@ -82,6 +159,13 @@ func (i *InstanceManager) Run() {
 	i.Config.AppLog.Info("Creating HTTP buffer with " + strconv.Itoa(i.Config.Http.HttpBuffer) + " backlog items")
 	i.esChn = make(chan EsMsg, i.Config.Http.HttpBuffer)
 	i.s3Chn = make(chan EsMsg, i.Config.Http.HttpBuffer)
+	i.statusChn = make(chan StatusInfo, 1000)
+	i.shutdownUpdate = make(chan bool)
+	i.status = make(map[string]map[string]interface{})
+
+	// Start Status logger
+	go i.StatusLogger()
+	go i.UpdateStatus()
 
 	// Roll back broken transactions, move temp file and sending file back
 	i.Config.AppLog.Info("Do some cleanning: recoverying broken transaction and buffer files")
@@ -91,37 +175,42 @@ func (i *InstanceManager) Run() {
 	// Initial elasticsearch indexer instance
 	i.Config.AppLog.Info("Initializing ES Indexer...")
 	i.esIndexer = &EsIndexer{
-		Config:  i.Config,
-		EsInput: i.esChn,
+		Config:       i.Config,
+		EsInput:      i.esChn,
+		StatusOutput: i.statusChn,
 	}
 	i.esIndexer.Run()
 
 	i.Config.AppLog.Info("Initializing ES Sender...")
 	i.esSender = &EsSender{
-		Config: i.Config,
+		Config:       i.Config,
+		StatusOutput: i.statusChn,
 	}
 	i.esSender.Run()
 
 	// Initial S3 indexer instance
 	i.Config.AppLog.Info("Initializing S3 Indexer...")
 	i.s3Indexer = &S3Indexer{
-		Config:  i.Config,
-		S3Input: i.s3Chn,
+		Config:       i.Config,
+		S3Input:      i.s3Chn,
+		StatusOutput: i.statusChn,
 	}
 	i.s3Indexer.Run()
 
 	i.Config.AppLog.Info("Initializing S3 Sender...")
 	i.s3Sender = &S3Sender{
-		Config: i.Config,
+		Config:       i.Config,
+		StatusOutput: i.statusChn,
 	}
 	i.s3Sender.Run()
 
 	// Initial HTTP service instance
 	i.Config.AppLog.Info("Initializing HTTP server...")
 	i.httpServer = &HttpServer{
-		Config:   i.Config,
-		EsOutput: i.esChn,
-		S3Output: i.s3Chn,
+		Config:       i.Config,
+		EsOutput:     i.esChn,
+		S3Output:     i.s3Chn,
+		StatusOutput: i.statusChn,
 	}
 	i.httpServer.Run()
 }

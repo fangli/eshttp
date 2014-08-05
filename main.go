@@ -66,7 +66,8 @@ func main() {
 			config.AppLog.Info("Initializing eshttp instance manager...")
 
 			im = eshttp.InstanceManager{
-				Config: config,
+				Config:        config,
+				StartUnixTime: startTime.Unix(),
 			}
 			im.Run()
 			reloadTimes++

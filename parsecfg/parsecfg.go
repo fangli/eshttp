@@ -44,11 +44,13 @@ var SYS_BUILD_DATE string
 
 type Config struct {
 	Main struct {
-		Cores        int    `gcfg:"cores"`
-		BufferPath   string `gcfg:"buffer-path"`
-		LogFile      string `gcfg:"log-file"`
-		LogLevel     int
-		Raw_LogLevel string `gcfg:"log-level"`
+		Cores           int    `gcfg:"cores"`
+		BufferPath      string `gcfg:"buffer-path"`
+		LogFile         string `gcfg:"log-file"`
+		LogLevel        int
+		Raw_LogLevel    string `gcfg:"log-level"`
+		StatusFile      string `gcfg:"status-file"`
+		StatusUploadUrl string `gcfg:"status-upload-url"`
 	}
 	Http struct {
 		Listen           string `gcfg:"listen-address"`
@@ -143,6 +145,8 @@ func initialDefault() *Config {
 	config.Main.BufferPath = "/mnt/eshttp_buffer/"
 	config.Main.LogFile = "/var/log/eshttp.log"
 	config.Main.Raw_LogLevel = "INFO"
+	config.Main.StatusFile = "/mnt/eshttp_buffer/status.out"
+	config.Main.StatusUploadUrl = ""
 
 	config.Http.Listen = "0.0.0.0"
 	config.Http.Port = "80"

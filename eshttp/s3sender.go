@@ -34,10 +34,12 @@ import (
 
 type S3Sender struct {
 	Config          *parsecfg.Config
+	StatusOutput    chan StatusInfo
 	bucket          *s3.Bucket
 	inputChunkFile  chan string
 	doneSenderChan  chan bool
 	doneScannerChan chan bool
+	postStatus      *PostStatus
 }
 
 func (s *S3Sender) bufferScanner() {
@@ -51,6 +53,7 @@ func (s *S3Sender) bufferScanner() {
 				sort.Strings(tempFiles)
 				s.Config.AppLog.Debug("Found S3 buffered chunk for sending: " + tempFiles[0])
 				s.inputChunkFile <- MakeSendReady(tempFiles[0])
+				SendStatus(s.StatusOutput, "s3_uploader", "file_buffer_size", GlobSize(tempFiles[1:]))
 			}
 		case <-s.doneScannerChan:
 			return
@@ -58,26 +61,41 @@ func (s *S3Sender) bufferScanner() {
 	}
 }
 
-func (s *S3Sender) send(chunkName string) error {
+func (s *S3Sender) send(chunkName string) (int64, error) {
 	var err error
 	f, err := os.Open(chunkName)
 	if err != nil {
 		panic(err)
 	}
+	defer f.Close()
 	b := bufio.NewReader(f)
 	stat, err := f.Stat()
 	if err != nil {
 		panic(err)
 	}
 	err = s.bucket.PutReader(ParseS3FilePath(chunkName), b, stat.Size(), "binary/octet-stream", s3.Private, s3.Options{})
-	return err
+	return stat.Size(), err
 }
 
 func (s *S3Sender) sender() {
+	var t0 time.Time
+	var delta time.Duration
+	var buf_size int64
+	var err error
 	for {
 		select {
 		case chunk := <-s.inputChunkFile:
-			err := s.send(chunk)
+			t0 = time.Now()
+			buf_size, err = s.send(chunk)
+			delta = time.Since(t0)
+
+			s.postStatus.Update(&PostStatusMsg{
+				Ts:     t0,
+				Lasts:  delta,
+				Size:   buf_size,
+				Status: err == nil,
+			})
+
 			if err != nil {
 				s.Config.AppLog.Warning("Error uploading S3 files: " + err.Error() + ", rollback transaction.")
 				RollbackChunk(chunk)
@@ -98,6 +116,7 @@ func (s *S3Sender) Shutdown() {
 	for i := 0; i < s.Config.S3.MaxConcurrent; i++ {
 		s.doneSenderChan <- true
 	}
+	s.postStatus.Shutdown()
 	s.Config.AppLog.Info("S3 sender stopped")
 }
 
@@ -120,14 +139,18 @@ func (s *S3Sender) Run() {
 	s.doneScannerChan = make(chan bool)
 	s.inputChunkFile = make(chan string)
 
+	s.postStatus = &PostStatus{
+		ModuleName: "s3_uploader",
+		StatusName: "upload_status",
+		OutputChn:  s.StatusOutput,
+	}
+	s.postStatus.Initial()
+
 	s.Config.AppLog.Info("Spawning " + strconv.Itoa(s.Config.S3.MaxConcurrent) + " threads for S3 uploading")
 	for i := 0; i < s.Config.S3.MaxConcurrent; i++ {
 		go s.sender()
 	}
 
-	// inputChunkFile is a chan that contains the filename of ready-to-send
-	// S3 chunk file, and EsBufferScanner() will scan those files and
-	// make them ready to post, then push the oldest one to chan.
 	s.Config.AppLog.Info("Starting S3 chunk scanner...")
 	go s.bufferScanner()
 

@@ -33,10 +33,12 @@ import (
 
 type EsSender struct {
 	Config          *parsecfg.Config
+	StatusOutput    chan StatusInfo
 	inputChunkFile  chan string
 	doneSenderChan  chan bool
 	doneScannerChan chan bool
 	esConn          *elastigo.Conn
+	postStatus      *PostStatus
 }
 
 func (e *EsSender) bufferScanner() {
@@ -50,6 +52,7 @@ func (e *EsSender) bufferScanner() {
 				sort.Strings(tempFiles)
 				e.Config.AppLog.Debug("ES buffer scanner found chunk " + tempFiles[0] + ", make it ready for sending.")
 				e.inputChunkFile <- MakeSendReady(tempFiles[0])
+				SendStatus(e.StatusOutput, "es_uploader", "file_buffer_size", GlobSize(tempFiles[1:]))
 			}
 		case <-e.doneScannerChan:
 			return
@@ -58,12 +61,26 @@ func (e *EsSender) bufferScanner() {
 }
 
 func (e *EsSender) send(chunkName string) error {
+	var t0 time.Time
+	var delta time.Duration
+	var buf_size int64
 	var err error
 	b, err := ioutil.ReadFile(chunkName)
 	if err != nil {
 		panic(err)
 	}
+	buf_size = int64(len(b))
+	t0 = time.Now()
 	_, err = e.esConn.DoCommand("POST", "/_bulk", nil, b)
+	delta = time.Since(t0)
+
+	e.postStatus.Update(&PostStatusMsg{
+		Ts:     t0,
+		Lasts:  delta,
+		Size:   buf_size,
+		Status: err == nil,
+	})
+
 	return err
 }
 
@@ -93,6 +110,7 @@ func (e *EsSender) Shutdown() {
 	for i := 0; i < e.Config.Elasticsearch.MaxConcurrent; i++ {
 		e.doneSenderChan <- true
 	}
+	e.postStatus.Shutdown()
 	e.Config.AppLog.Info("ES Sender stopped")
 }
 
@@ -111,6 +129,13 @@ func (e *EsSender) Run() {
 	e.doneSenderChan = make(chan bool)
 	e.doneScannerChan = make(chan bool)
 	e.inputChunkFile = make(chan string)
+
+	e.postStatus = &PostStatus{
+		ModuleName: "es_uploader",
+		StatusName: "upload_status",
+		OutputChn:  e.StatusOutput,
+	}
+	e.postStatus.Initial()
 
 	e.Config.AppLog.Info("Spawning " + strconv.Itoa(e.Config.Elasticsearch.MaxConcurrent) + " ES sender threads")
 	for i := 0; i < e.Config.Elasticsearch.MaxConcurrent; i++ {
