@@ -44,19 +44,17 @@ rm -rf %{buildroot}
 %preun
   if [ $1 = 0 ]; then
       # package is being erased, not upgraded
-      /sbin/service eshttp stop
       /sbin/chkconfig --del eshttp
   fi
 
 %postun
   if [ $1 = 0 ]; then
       echo "Uninstalling eshttp"
-      rm %{_bindir}/eshttp
       # package is being erased
       # Any needed actions here on uninstalls
   else
       # Upgrade
-      echo "Stopped, do not forget to run eshttp again"
+      echo "Stopped, do not forget to restart eshttp"
   fi
 
 
