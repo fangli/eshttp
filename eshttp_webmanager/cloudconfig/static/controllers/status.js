@@ -147,7 +147,11 @@ angular.module('eshttp')
             if ($scope.frefreshTimout) {
               $timeout.cancel($scope.frefreshTimout);
             }
-            $scope.frefreshTimout = $timeout($scope.loadStatus, $scope.refreshInterval*1000);
+            if ($scope.stopTimeOut) {
+              return;
+            } else {
+              $scope.frefreshTimout = $timeout($scope.loadStatus, $scope.refreshInterval*1000);
+            }
           } else {
             window.alert(data.message);
           }
@@ -157,6 +161,10 @@ angular.module('eshttp')
           window.alert('We can not load status currently, please refresh the page!');
         });
     };
+
+    $scope.$on('$destroy', function(){
+      $scope.stopTimeOut = true;
+    });
 
     $scope.initial = function() {
         $scope.status = [];
