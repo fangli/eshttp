@@ -84,6 +84,7 @@ func main() {
 				im.Config.AppLog.Info("Signal stop received, stopping eshttp...")
 				im.Shutdown()
 				im.Config.AppLog.Info("Eshttp exited.")
+				parsecfg.RemovePid()
 				os.Exit(0)
 			}
 

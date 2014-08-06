@@ -29,7 +29,9 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/fangli/eshttp/logging"
@@ -42,7 +44,13 @@ var SYS_VER string
 var SYS_BUILD_VER string
 var SYS_BUILD_DATE string
 
+var CONFIG_PATH string
+var PID_FILE string
+
 type Config struct {
+	Daemon struct {
+		Args string `gcfg:"args"`
+	}
 	Main struct {
 		Cores           int    `gcfg:"cores"`
 		BufferPath      string `gcfg:"buffer-path"`
@@ -126,8 +134,9 @@ func showVersion() {
 	os.Exit(0)
 }
 
-func getConfigPath() string {
+func getConfigPath() {
 	configPath := flag.String("c", "/etc/eshttp.conf", "Path of config file or URI")
+	pidFile := flag.String("p", "/var/run/eshttp.pid", "Pid file")
 	version := flag.Bool("version", false, "Show version information")
 	v := flag.Bool("v", false, "Show version information")
 	flag.Parse()
@@ -135,7 +144,10 @@ func getConfigPath() string {
 	if *version || *v {
 		showVersion()
 	}
-	return *configPath
+
+	CONFIG_PATH = *configPath
+	PID_FILE = *pidFile
+
 }
 
 func initialDefault() *Config {
@@ -275,9 +287,24 @@ func ConfigFormat(config *Config) {
 	return
 }
 
+func WritePid() {
+	err := ioutil.WriteFile(PID_FILE, []byte(strconv.Itoa(os.Getpid())), 0666)
+	if err != nil {
+		log.Fatalln("Error writing PID file: " + err.Error())
+	}
+}
+
+func RemovePid() {
+	err := os.Remove(PID_FILE)
+	if err != nil {
+		log.Println("System exit but unable to delete PID file: " + err.Error())
+	}
+}
+
 type ConfigManager struct {
 	Source    string
 	ReloadChn chan *Config
+	RunOnce   sync.Once
 }
 
 func (c *ConfigManager) runCheckBg() {
@@ -300,6 +327,7 @@ func (c *ConfigManager) runCheckBg() {
 			}
 			currentRaw = newConfigStr
 			ConfigFormat(config)
+			c.RunOnce.Do(WritePid)
 			c.ReloadChn <- config
 		}
 		time.Sleep(time.Second)
@@ -314,6 +342,7 @@ func (c *ConfigManager) runCheckLocal() {
 		log.Fatalf("Failed to read config from %s, Reason: %s", c.Source, err)
 	}
 	ConfigFormat(config)
+	c.RunOnce.Do(WritePid)
 	c.ReloadChn <- config
 }
 
@@ -329,7 +358,8 @@ func (c *ConfigManager) SendReload() error {
 func (c *ConfigManager) Initial() {
 
 	c.ReloadChn = make(chan *Config)
-	c.Source = getConfigPath()
+	getConfigPath()
+	c.Source = CONFIG_PATH
 
 	if strings.HasPrefix(c.Source, "http") {
 		go c.runCheckBg()
