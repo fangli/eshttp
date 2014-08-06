@@ -22,6 +22,7 @@ package logging
 
 import (
 	"fmt"
+	"log"
 	"os"
 	"sync"
 	"time"
@@ -55,36 +56,54 @@ type Log struct {
 	Dest     int
 	Level    int
 	FileName string
-	f        *os.File
-	lock     sync.Mutex
+	logChn   chan string
+	runOnce  sync.Once
+}
+
+func (l *Log) Writer() {
+	f, err := os.OpenFile(l.FileName, os.O_WRONLY|os.O_APPEND|os.O_CREATE, 0666)
+	if err != nil {
+		return
+	}
+	defer f.Close()
+
+	for msg := range l.logChn {
+
+		if (l.Dest == 0) || (l.Dest == 2) {
+			fmt.Print(msg)
+		}
+		if (l.Dest == 1) || (l.Dest == 2) {
+			f.WriteString(msg)
+		}
+	}
+	log.Println("Close log file")
+}
+
+func (l *Log) initial() {
+	l.logChn = make(chan string, 1000)
+	go l.Writer()
+}
+
+func (l *Log) Shutdown() {
+	close(l.logChn)
 }
 
 func (l *Log) write(level int, msg string) {
-	var err error
+
+	l.runOnce.Do(l.initial)
+
 	if l.Level > level {
 		return
 	}
-
-	l.lock.Lock()
-	defer l.lock.Unlock()
-
 	output := fmt.Sprintf(
 		"%s [%s] %s\n",
 		time.Now().UTC().Format("2006-01-02 15:04:05"),
 		LevelStr[level],
 		msg,
 	)
-	if (l.Dest == 0) || (l.Dest == 2) {
-		fmt.Print(output)
-	}
-	if (l.Dest == 1) || (l.Dest == 2) {
-		l.f, err = os.OpenFile(l.FileName, os.O_WRONLY|os.O_APPEND|os.O_CREATE, 0644)
-		if err != nil {
-			return
-		}
-		defer l.f.Close()
-		l.f.WriteString(output)
-	}
+
+	l.logChn <- output
+
 }
 
 func (l *Log) Debug(msg string) {
