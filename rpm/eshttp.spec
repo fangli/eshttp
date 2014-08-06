@@ -9,6 +9,8 @@ URL:            https://github.com/fangli/eshttp
 SOURCE0:        https://github.com/fangli/eshttp/releases/download/1.0/eshttp.tar.gz
 BuildRoot:      %(mktemp -ud %{_tmppath}/%{name}-%{version}-%{release}-XXXXXX)
 
+%define debug_package %{nil}
+
 %description
 A distributed HTTP service for bulked Elasticseatch and AWS S3 indexing
 
@@ -18,10 +20,12 @@ A distributed HTTP service for bulked Elasticseatch and AWS S3 indexing
 %pre
 
 %install
+install -d %{buildroot}%{_bindir}
 mv eshttp %{buildroot}%{_bindir}/
+mv eshttp-manager %{buildroot}%{_bindir}/
 install -d %{buildroot}%{_initddir}
 mv etc/init.d/eshttp %{buildroot}%{_initddir}/
-install -d %{buildroot}%{_sysconfdir}/
+install -d %{buildroot}%{_sysconfdir}
 mv etc/eshttp.conf %{buildroot}%{_sysconfdir}/eshttp.conf
 
 

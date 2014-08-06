@@ -19,7 +19,7 @@ RETVAL=0
 
 start() {
         echo -n $"Starting eshttp: "
-        daemon eshttp -c /etc/eshttp.conf
+        daemon --pidfile=/var/run/eshttp.pid eshttp-manager -c /etc/eshttp.conf
         RETVAL=$?
         echo
         [ $RETVAL -eq 0 ] && touch /var/lock/subsys/eshttp
@@ -27,7 +27,8 @@ start() {
 
 stop() {
         echo -n $"Stopping eshttp: "
-        killproc eshttp
+        killproc -d 3600 eshttp
+        RETVAL=$?
         echo
         [ $RETVAL -eq 0 ] && rm -f /var/lock/subsys/eshttp
 }
@@ -37,6 +38,14 @@ restart() {
         start
 }
 
+reload() {
+        echo -n $"Reloading eshttp: "
+        killproc eshttp -HUP
+        RETVAL=$?
+        echo
+        [ $RETVAL -eq 0 ] && echo "Reloading configuration, eshttp will become down and up again in minutes."
+}
+
 case "$1" in
   start)
         start
@@ -44,7 +53,10 @@ case "$1" in
   stop) 
         stop
         ;;
-  restart|force-reload|reload)
+  reload) 
+        reload
+        ;;
+  restart)
         restart
         ;;
   condrestart)
@@ -55,7 +67,7 @@ case "$1" in
         RETVAL=$?
         ;;
   *)
-        echo $"Usage: $0 {start|stop|status|restart|reload|force-reload|condrestart}"
+        echo $"Usage: $0 {start|stop|status|restart|reload|condrestart}"
         exit 1
 esac
 
