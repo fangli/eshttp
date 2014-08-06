@@ -1,0 +1,62 @@
+#!/bin/bash
+#
+# eshttp   This scripts turns eshttp on
+#
+# Author:       Fang Li <fang.li@funplus.com>
+#
+# chkconfig:    - 99 01
+#
+# description:  A distributed HTTP service for bulked Elasticseatch and AWS S3 indexing
+# processname:  eshttp
+# config: /etc/eshttp.conf
+# pidfile: /var/run/eshttp.pid
+#
+
+# source function library
+. /etc/rc.d/init.d/functions
+
+RETVAL=0
+
+start() {
+        echo -n $"Starting eshttp: "
+        daemon eshttp -c /etc/eshttp.conf
+        RETVAL=$?
+        echo
+        [ $RETVAL -eq 0 ] && touch /var/lock/subsys/eshttp
+}
+
+stop() {
+        echo -n $"Stopping eshttp: "
+        killproc eshttp
+        echo
+        [ $RETVAL -eq 0 ] && rm -f /var/lock/subsys/eshttp
+}
+
+restart() {
+        stop
+        start
+}
+
+case "$1" in
+  start)
+        start
+        ;;
+  stop) 
+        stop
+        ;;
+  restart|force-reload|reload)
+        restart
+        ;;
+  condrestart)
+        [ -f /var/lock/subsys/eshttp ] && restart
+        ;;
+  status)
+        status eshttp
+        RETVAL=$?
+        ;;
+  *)
+        echo $"Usage: $0 {start|stop|status|restart|reload|force-reload|condrestart}"
+        exit 1
+esac
+
+exit $RETVAL
