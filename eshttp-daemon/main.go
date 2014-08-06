@@ -82,7 +82,7 @@ func main() {
 	}()
 
 	select {
-	case <-time.After(2 * time.Second):
+	case <-time.After(3 * time.Second):
 		os.Exit(0)
 	case err := <-done:
 		if err != nil {
