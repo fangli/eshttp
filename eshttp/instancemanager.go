@@ -213,4 +213,5 @@ func (i *InstanceManager) Run() {
 		StatusOutput: i.statusChn,
 	}
 	i.httpServer.Run()
+
 }

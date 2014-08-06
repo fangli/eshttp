@@ -1,0 +1,142 @@
+
+<form class="form-inline" role="form">
+    <div class="form-group pull-right">
+        <select class="form-control input-sm" ng-model="refreshInterval">
+            <option value="1">Refresh every 1s</option>
+            <option value="5">Refresh every 5s</option>
+            <option value="10">Refresh every 10s</option>
+            <option value="30">Refresh every 30s</option>
+            <option value="60">Refresh every 1m</option>
+            <option value="300">Refresh every 5m</option>
+            <option value="900">Refresh every 15m</option>
+            <option value="1800">Refresh every 30m</option>
+            <option value="3600">Refresh every 1h</option>
+        </select>
+        <button class="btn btn-default btn-sm" ng-disabled="isLoading" ng-click="loadStatus()"><span class="glyphicon glyphicon-refresh"></span> Refresh</button>
+    </div>
+    <div class="form-group">
+    <label>Filter</label>
+    <select class="form-control input-sm" ng-model="nodeFilter" ng-options="st.ip as st.name for st in status">
+        <option value="">-- No filtering --</option>
+    </select>
+    </div>
+</form>
+
+
+<h3>System</h3>
+<table class="table table-bordered table-striped">
+    <thead>
+        <tr>
+            <th>Name</th>
+            <th>IP</th>
+            <th>Last Reload</th>
+            <th>Uptime</th>
+            <th>Update at</th>
+        </tr>
+    </thead>
+    <tbody>
+        <tr ng-repeat="st in status | filter: {ip: nodeFilter || undefined}" ng-class="{'success': st.status.system.updated_delay <= 5, 'warning': ((st.status.system.updated_delay > 5) && (st.status.system.updated_delay < 300)), 'danger': ((!st.status.system) || st.status.system.updated_delay >= 300)}">
+            <td>{{ st.name }}</td>
+            <td>{{ st.ip }}</td>
+            <td>{{ st.status.system.last_reload_at | unixtostr }}</td>
+            <td>{{ st.status.system.uptime }}<span class="text-muted">s</span></td>
+            <td>{{ st.status.system.updated_time | unixtostr }}</td>
+        </tr>
+    </tbody>
+</table>
+
+<h3>HTTP</h3>
+
+<table class="table table-bordered table-striped">
+    <thead>
+        <tr>
+            <th>Name</th>
+            <th>IP</th>
+            <th>Accepted</th>
+            <th>QPS</th>
+            <th>S3 buffer</th>
+            <th>ES buffer</th>
+            <th>Bad request</th>
+            <th>Invalid format</th>
+            <th>Update at</th>
+        </tr>
+    </thead>
+    <tbody>
+        <tr ng-repeat="st in status | filter: {ip: nodeFilter || undefined}">
+            <td>{{ st.name }}</td>
+            <td>{{ st.ip }}</td>
+            <td>{{ st.status.http.error.counter_accepted }}</td>
+            <td ng-class="{'warning': st.status.http.qps == 0}">{{ st.status.http.qps }}<span class="text-muted"> req/s</span></td>
+            <td ng-class="{'warning': st.status.http.cache.s3_cache_used * 2 > st.status.http.cache.s3_cache_total}">{{ st.status.http.cache.s3_cache_used }}/{{ st.status.http.cache.s3_cache_total }}</td>
+            <td ng-class="{'warning': st.status.http.cache.es_cache_used * 2 > st.status.http.cache.es_cache_total}">{{ st.status.http.cache.es_cache_used }}/{{ st.status.http.cache.es_cache_total }}</td>
+            <td>{{ st.status.http.error.counter_bad_parameter }}</td>
+            <td>{{ st.status.http.error.counter_invalid_json }}</td>
+            <td>{{ st.status.system.updated_time | unixtostr }}</td>
+        </tr>
+    </tbody>
+</table>
+
+<h3>Indexing</h3>
+
+<table class="table table-bordered table-striped">
+    <thead>
+        <tr>
+            <th>Name</th>
+            <th>IP</th>
+            <th>S3 Inbound</th>
+            <th>ES Inbound</th>
+            <th>FileBuffer(S3)</th>
+            <th>FileBuffer(ES)</th>
+            <th>Update at</th>
+        </tr>
+    </thead>
+    <tbody>
+        <tr ng-repeat="st in status | filter: {ip: nodeFilter || undefined}">
+            <td>{{ st.name }}</td>
+            <td>{{ st.ip }}</td>
+            <td ng-class="{'warning': st.status.index_speed.s3_index_bytes_per_second == 0}">{{ st.status.index_speed.s3_index_bytes_per_second | humanbytes }}/s</td>
+            <td ng-class="{'warning': st.status.index_speed.es_index_bytes_per_second == 0}">{{ st.status.index_speed.es_index_bytes_per_second | humanbytes }}/s</td>
+            <td>{{ st.status.local_file_buffer.s3_bytes | humanbytes }}</td>
+            <td>{{ st.status.local_file_buffer.es_bytes | humanbytes }}</td>
+            <td>{{ st.status.system.updated_time | unixtostr }}</td>
+        </tr>
+    </tbody>
+</table>
+
+
+<h3>Upload</h3>
+
+<table class="table table-bordered">
+    <thead>
+        <tr>
+            <th>Name</th>
+            <th>IP</th>
+            <th>S3 Upload</th>
+            <th>ES BulkPost</th>
+        </tr>
+    </thead>
+    <tbody valign="middle">
+        <tr ng-repeat="st in status | filter: {ip: nodeFilter || undefined}">
+            <td>{{ st.name }}</td>
+            <td>{{ st.ip }}</td>
+            <td>
+                <div ng-repeat="s3stat in st.status.sender.s3Formated" class="progress">
+                    <div class="progress-bar progress-bar-info" style="width: {{s3stat.marginLeft}}%;">
+                        </div>
+                    <div ng-class="{'progress-bar':true,'progress-bar-success': s3stat.result, 'progress-bar-danger': !s3stat.result}" style="width: {{s3stat.len}}%;">
+                        </div>
+                </div>
+                {{st.status.sender.avg.s3Byte | humanbytes}}/s, {{st.status.sender.avg.s3Time}}s per request
+            </td>
+            <td>
+                <div ng-repeat="esstat in st.status.sender.esFormated" class="progress">
+                      <div class="progress-bar progress-bar-info" style="width: {{esstat.marginLeft}}%;">
+                            </div>
+                      <div ng-class="{'progress-bar':true,'progress-bar-success': esstat.result, 'progress-bar-danger': !esstat.result}" style="width: {{esstat.len}}%;">
+                            </div>
+                </div>
+                {{st.status.sender.avg.esByte | humanbytes}}/s, {{st.status.sender.avg.esTime}}s per request
+            </td>
+        </tr>
+    </tbody>
+</table>

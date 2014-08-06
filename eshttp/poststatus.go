@@ -22,7 +22,6 @@ package eshttp
 
 import (
 	"container/list"
-	"strconv"
 	"sync"
 	"time"
 )
@@ -51,10 +50,10 @@ func (p *PostStatus) send() {
 	for e := p.postStatus.Front(); e != nil; e = e.Next() {
 		x := e.Value.(PostStatusMsg)
 		lst[i] = make(map[string]interface{})
-		lst[i]["result"] = strconv.FormatBool(x.Status)
-		lst[i]["size"] = strconv.FormatFloat(float64(x.Size)/1000.0, 'f', 1, 64) + "KB"
-		lst[i]["took"] = strconv.FormatInt(x.Lasts.Nanoseconds()/1000000, 10) + "ms"
-		lst[i]["started"] = strconv.FormatInt(time.Now().Unix()-x.Ts.Unix(), 10) + "s ago"
+		lst[i]["result"] = x.Status
+		lst[i]["size"] = x.Size
+		lst[i]["took"] = x.Lasts.Nanoseconds() / 1000000000
+		lst[i]["started"] = x.Ts.Unix()
 		i++
 	}
 	p.postStatusLock.Unlock()

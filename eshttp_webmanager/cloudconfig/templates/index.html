@@ -1,0 +1,60 @@
+{% verbatim %}<!doctype html>
+<html ng-app="eshttp">
+<head>
+
+    <meta charset="utf-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="description" content="EsHTTP WebManager">
+    <meta name="author" content="Felix<fang.li@funplus.com>">
+
+    <title>EsHttp Webconsole</title>
+
+    
+    <link rel="stylesheet" href="//maxcdn.bootstrapcdn.com/bootstrap/3.2.0/css/bootstrap.min.css">
+    <link rel="stylesheet" href="/static/css/main.css" />
+
+    <script src="//ajax.googleapis.com/ajax/libs/angularjs/1.2.21/angular.min.js"></script>
+    <script src="//ajax.googleapis.com/ajax/libs/angularjs/1.2.21/angular-route.min.js"></script>
+    <script src="/static/vendor/ace-min/ui-ace.js"></script>
+    <script src="/static/vendor/ace-min/ace.js"></script>
+
+    <script type="text/javascript" src="/static/app.js"></script>
+    <script type="text/javascript" src="/static/directives/confirmclick.js"></script>
+    <script type="text/javascript" src="/static/services/api.js"></script>
+    <script type="text/javascript" src="/static/vendor/sugar.min.js"></script>
+    <script type="text/javascript" src="/static/filters/unixtostr.js"></script>
+    <script type="text/javascript" src="/static/filters/humanbytes.js"></script>
+    <script type="text/javascript" src="/static/controllers/head.js"></script>
+    <script type="text/javascript" src="/static/controllers/index.js"></script>
+    <script type="text/javascript" src="/static/controllers/config.js"></script>
+    <script type="text/javascript" src="/static/controllers/status.js"></script>
+</head>
+
+<body>
+
+    <div class="container">
+        <div class="page-header">
+          <h1>ESHTTP Manager</h1>
+          <p class="lead">A configuration and monitoring system for eshttp cluster</p>
+          <div ng-controller="HeadCtrl" class="btn-group">
+                <a ng-href="#{{ menu[1] }}" ng-repeat="menu in $root.menus" ng-class="{'active': isActive(menu[1]), 'btn': true, 'btn-default': true}">{{ menu[0] }}</a>
+          </div>
+        </div>
+
+
+        <div ng-view="">
+
+        </div>
+
+        <div class="footer">
+          <p class="pull-right"><span class="glyphicon glyphicon-heart"></span> from DevOPS team <br>© 2014 Funplus</p>
+          <p>&nbsp;</p>
+        </div>
+
+    </div> <!-- /container -->
+
+</body>
+
+</html>
+{% endverbatim %}

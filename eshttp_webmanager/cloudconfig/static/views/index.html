@@ -1,0 +1,47 @@
+<div class="form-group pull-right">
+    <button class="btn btn-default btn-sm" ng-disabled="isLoading" ng-click="loadNodes()"><span class="glyphicon glyphicon-refresh"></span> Refresh</button>
+</div>
+
+<table class="table table-bordered table-striped">
+    <thead>
+        <tr>
+            <th>Name</th>
+            <th>IP</th>
+            <th>Config</th>
+            <th>Updated</th>
+            <th>Heartbeat</th>
+            <th>Status</th>
+            <th>Action</th>
+        </tr>
+    </thead>
+    <tbody>
+        <tr ng-repeat="node in nodes">
+            <td ng-click="node.isEditing = true"><input class="form-control input input-sm" ng-model="node.name" ng-show="node.isEditing"><span class="editable" ng-hide="node.isEditing">{{node.name}}</span></td>
+            <td>{{node.ip}}</td>
+            <td ng-click="node.isEditing = true">
+                <select class="form-control input-sm" ng-show="node.isEditing" ng-model="node.config_id" ng-options="lst.id as lst.name for lst in configs">
+                    <option value="">--Select--</option>
+                </select>
+                <span class="editable" ng-hide="node.isEditing">{{node.config_name}}</span>
+            </td>
+            <td>{{node.lastchange | unixtostr}}</td>
+            <td>{{node.lastping | unixtostr}}</td>
+            <td>
+                <span class="label label-success" ng-show="node.confirmed">Active</span>
+                <span class="label label-default" ng-hide="node.confirmed">Pending</span>
+            </td>
+            <td>
+                <span ng-show="node.confirmed"><button class="btn btn-xs btn-success" ng-disabled="node.isSaving || !node.isEditing" ng-click="saveNode(node)"><span class="glyphicon glyphicon-floppy-disk"></span> Save</button> | <button ng-confirm-click="You are about to delete the node {{node.name}}({{node.ip}}), sure?" class="btn btn-xs btn-danger" ng-disabled="node.isSaving" ng-click="deleteNode(node)"><span class="glyphicon glyphicon-trash"></span> Del</button></span>
+                <span ng-hide="node.confirmed"><button ng-disabled="node.isSaving" ng-confirm-click="Confirming a node means you will adding this node to cluster and agree to push configuration to {{ node.ip }}, are you sure?" class="btn btn-xs btn-warning" ng-click="confirmNode(node)"><span class="glyphicon glyphicon-ok-circle"></span> Confirm</button></span>
+            </td>
+        </tr>
+
+        <tr ng-show="isLoading">
+            <td colspan="7" align="center">
+                <span class="text-muted"><i>Loading...</i></span>
+            </td>
+        </tr>
+
+    </tbody>
+</table>
+

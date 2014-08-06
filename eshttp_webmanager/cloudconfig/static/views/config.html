@@ -1,0 +1,59 @@
+<div class="form-group pull-right">
+    <button class="btn btn-sm btn-default" ng-click="showingNew = !showingNew">New</button>
+    <button class="btn btn-default btn-sm" ng-disabled="isLoading" ng-click="loadConfigs()"><span class="glyphicon glyphicon-refresh"></span> Refresh</button>
+</div>
+
+
+<table class="table">
+    <thead>
+        <tr>
+            <th>Name</th>
+            <th>Content</th>
+            <th>Created</th>
+            <th>Updated</th>
+            <th>Action</th>
+        </tr>
+    </thead>
+    <tbody ng-repeat="config in configs">
+        <tr>
+            <td ng-click="config.isEditing = true"><input class="form-control input-sm" ng-model="config.name" ng-show="config.isEditing"><span class="editable" ng-hide="config.isEditing">{{config.name}}</span></td>
+            <td ng-click="config.isEditing = true">
+                <span class="editable" ng-hide="config.isEditing">click to edit</span>
+                <span class="pending" ng-show="config.isEditing"><i>Edit below</i></span>
+            </td>
+            <td>{{config.created | unixtostr}}</td>
+            <td>{{config.updated | unixtostr}}</td>
+            <td>
+                <span><button class="btn btn-success btn-xs" ng-disabled="config.isSaving || !config.isEditing" ng-click="saveConfig(config)"><span class="glyphicon glyphicon-floppy-disk"></span> Save</button> | <button class="btn btn-danger btn-xs" ng-disabled="config.isSaving" ng-click="deleteConfig(config)"><span class="glyphicon glyphicon-trash"></span> Del</button></span>
+            </td>
+        </tr>
+        <tr ng-show="config.isEditing">
+            <td colspan="4">
+                <div ui-ace="ace.option" ng-model="config.content"></div>
+            </td>
+        </tr>
+    </tbody>
+    <tbody ng-show="isLoading">
+        <tr>
+            <td colspan="7" align="center">
+                <span class="text-muted"><i>Loading...</i></span>
+            </td>
+        </tr>
+    </tbody>
+</table>
+
+<div ng-show="showingNew" role="form">
+  <div class="form-group">
+    <label>Name</label>
+    <input ng-model="newConfig.name" type="text" class="form-control" placeholder="The name of new config">
+  </div>
+  <div class="form-group">
+    <label>Config content</label>
+    <div ui-ace="ace.option" ng-model="newConfig.content"></div>
+  </div>
+  
+  <button ng-disabled="newConfig.isSaving" ng-click="addConfig(newConfig)" type="button" class="btn btn-success">Add</button>
+  <button ng-disabled="newConfig.isSaving" ng-click="showingNew = !showingNew" type="button" class="btn btn-default">Cancel</button>
+</div>
+
+<hr>
