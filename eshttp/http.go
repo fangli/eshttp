@@ -81,6 +81,15 @@ func (h *HttpServer) SetStopStatus() {
 	time.Sleep(h.Config.Http.ShutdownWait)
 }
 
+func StringInSlice(a string, list []string) bool {
+    for _, b := range list {
+        if b == a {
+            return true
+        }
+    }
+    return false
+}
+
 func (h *HttpServer) CloseSocket() {
 	ln := *h.ln
 	ln.Close()
@@ -140,7 +149,7 @@ func (h *HttpServer) logHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// For a better performance let's make the loop inside
-	if isEs == "1" {
+	if (isEs == "1") && (!StringInSlice(project, h.Config.Elasticsearch.IgnoredProjects)) {
 		scanner = bufio.NewScanner(r.Body)
 		for scanner.Scan() {
 			msg := scanner.Bytes()

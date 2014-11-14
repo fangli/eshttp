@@ -81,6 +81,8 @@ type Config struct {
 		Raw_MaxBulkDelay string `gcfg:"max-bulk-delay"`
 		MaxBulkDelay     time.Duration
 		MaxConcurrent    int `gcfg:"max-connections"`
+		Raw_Ignored_Projects string `gcfg:"ignored-projects"`
+		IgnoredProjects  []string
 	}
 	S3 struct {
 		Raw_AccessKey string `gcfg:"accesskey"`
@@ -174,6 +176,7 @@ func initialDefault() *Config {
 	config.Elasticsearch.MaxBulkDocs = 50000
 	config.Elasticsearch.Raw_MaxBulkDelay = "30s"
 	config.Elasticsearch.MaxConcurrent = 10
+	config.Elasticsearch.Raw_Ignored_Projects = ""
 
 	config.S3.Raw_AccessKey = ""
 	config.S3.Raw_SecretKey = ""
@@ -232,6 +235,13 @@ func ConfigFormat(config *Config) {
 		config.Elasticsearch.Raw_Seed_Nodes, " ", "", -1)
 	config.Elasticsearch.SeedNodes = strings.Split(
 		config.Elasticsearch.Raw_Seed_Nodes,
+		",")
+
+	// ignored projects
+	config.Elasticsearch.Raw_Ignored_Projects = strings.Replace(
+		config.Elasticsearch.Raw_Ignored_Projects, " ", "", -1)
+	config.Elasticsearch.IgnoredProjects = strings.Split(
+		config.Elasticsearch.Raw_Ignored_Projects,
 		",")
 
 	// Log level upper case
