@@ -1,12 +1,12 @@
 Name:   eshttp
-Version:        1.0
+Version:        2.1
 Release:        el6
 Summary:        A distributed HTTP service for bulked Elasticseatch and AWS S3 indexing
 
 Group:          Applications/Server
 License:        Apache Licence 2.0
 URL:            https://github.com/fangli/eshttp
-SOURCE0:        https://github.com/fangli/eshttp/releases/download/1.0/eshttp.tar.gz
+SOURCE0:        https://github.com/fangli/eshttp/releases/download/2.1/eshttp.tar.gz
 BuildRoot:      %(mktemp -ud %{_tmppath}/%{name}-%{version}-%{release}-XXXXXX)
 
 %define debug_package %{nil}

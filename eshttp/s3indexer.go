@@ -79,20 +79,34 @@ func (s *S3ChunkManager) NewS3Chunk(project string, group string) *S3Chunk {
 	}
 }
 
-func (s *S3ChunkManager) WriteChunk(chunk EsMsg) {
-	var idx = chunk.Index + ":" + chunk.Type
-	if s.chunks[idx] == nil {
-		s.chunks[idx] = s.NewS3Chunk(chunk.Index, chunk.Type)
-	} else {
-		if time.Now().UTC().After(s.chunks[idx].expires) {
-			s.Config.AppLog.Debug("Rotate old chunk and create a new one for " + idx)
-			s.chunks[idx].Close()
-			delete(s.chunks, idx)
+func (s *S3ChunkManager) WriteChunk(chunk *EsMsg) {
+	if chunk != nil {
+
+		var idx = chunk.Index + ":" + chunk.Type
+		if s.chunks[idx] == nil {
 			s.chunks[idx] = s.NewS3Chunk(chunk.Index, chunk.Type)
+		} else {
+			if time.Now().UTC().After(s.chunks[idx].expires) {
+				s.Config.AppLog.Debug("Rotate old chunk and create a new one for " + idx)
+				s.chunks[idx].Close()
+				delete(s.chunks, idx)
+				s.chunks[idx] = s.NewS3Chunk(chunk.Index, chunk.Type)
+			}
 		}
+		s.chunkStatsChn <- int64(len(chunk.Doc))
+		s.chunks[idx].gzipWriter.Write(append(chunk.Doc, '\n'))
+
+	} else {
+
+		for i, _ := range s.chunks {
+			if time.Now().UTC().After(s.chunks[i].expires) {
+				s.Config.AppLog.Debug("Rotate old chunk and create a new one for " + i)
+				s.chunks[i].Close()
+				delete(s.chunks, i)
+			}
+		}
+
 	}
-	s.chunkStatsChn <- int64(len(chunk.Doc))
-	s.chunks[idx].gzipWriter.Write(append(chunk.Doc, '\n'))
 }
 
 func (s *S3ChunkManager) rotateStatus() {
@@ -154,9 +168,20 @@ func (s *S3Indexer) WriteS3Cache() {
 
 	s.Config.AppLog.Info("S3 chunk manager is ready for archiving logs...")
 
-	for chunk := range s.S3Input {
-		chunkManager.WriteChunk(chunk)
+FOR:
+	for {
+		select {
+		case chunk, ok := <-s.S3Input:
+			if !ok {
+				break FOR
+			} else {
+				chunkManager.WriteChunk(&chunk)
+			}
+		case <-time.After(time.Second):
+			chunkManager.WriteChunk(nil)
+		}
 	}
+
 	s.Config.AppLog.Info("Stopping S3 chunk manager...")
 	chunkManager.Shutdown()
 	s.shutdownChn <- true
